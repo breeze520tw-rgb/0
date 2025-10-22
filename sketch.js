@@ -1,49 +1,152 @@
 //學習7程式碼所在
 //學習5程式碼所在
-let circles = []; // 儲存所有圓形物件的陣列
-const colors = ['#d8e2dc', '#ffffff', '#f4acb7', '#9d8189']; // 圓形可用的顏色
+// 全域變數
+let score = 0;
+let popSound; // 用來儲存爆破音效
+let soundEnabled = false; // 追蹤音效是否開啟
+let soundButton; // 用來創建音效開關按鈕
 
-// --- 新增：管理爆破粒子的陣列與參數 ---
+// 【新增】音效按鈕隱藏後的計數器
+let centerClickCount = 0;
+// 【新增】設定中央點擊的有效範圍（中央 50x50 像素的區域）
+const CENTER_TOLERANCE = 25; 
+
+let circles = [];
+const colors = ['#d8e2dc', '#ffffff', '#f4acb7', '#9d8189']; // 圓形可用的顏色
 let bursts = [];
-const POP_CHANCE = 0.002; // 每個圓每一幀被炸裂的機率（可調整）
-// --- 新增結束 ---
+
+// 在 setup 之前載入音效
+function preload() {
+    // !!重要!!：請確保您的音效檔案 (pop.mp3) 存在於正確的路徑 (例如：專案中的 assets 資料夾)
+    try {
+        popSound = loadSound('assets/pop.mp3'); 
+    } catch (e) {
+        console.error("音效載入失敗，將無法播放聲音。請檢查檔案路徑。", e);
+        popSound = null; 
+    }
+}
 
 function setup() {
-  createCanvas(windowWidth, windowHeight); // 建立全螢幕畫布
-  background('#ffcad4'); // 設定畫布顏色
+    createCanvas(windowWidth, windowHeight);
+    background('#ffcad4');
 
-  // 初始化 30 個圓形物件
-  for (let i = 0; i < 40; i++) {
-    circles.push(new Circle());
-  }
+    for (let i = 0; i < 40; i++) {
+        circles.push(new Circle());
+    }
+
+    // 創建音效開關按鈕
+    soundButton = createButton('點此啟用音效 (啟用後自動隱藏)');
+    // 樣式設定
+    soundButton.style('background-color', '#9a8c98');
+    soundButton.style('color', 'white');
+    soundButton.style('border', 'none');
+    soundButton.style('padding', '10px 20px');
+    soundButton.style('font-size', '16px');
+    
+    // 定位在視窗正中央
+    soundButton.position(width / 2, height / 2);
+    soundButton.center(); 
+    
+    soundButton.mousePressed(toggleSound);
 }
 
 function draw() {
-  // 為了看到圓形在移動，我們每次繪製時都要重新繪製背景，
-  // 否則會留下殘影。
-  background('#ffcad4');
+    background('#ffcad4');
 
-  // 迭代並更新/顯示每個圓形
-  for (let circle of circles) {
-    circle.update();
-    circle.display();
-  }
-
-  // --- 新增：更新並顯示爆破粒子 ---
-  for (let i = bursts.length - 1; i >= 0; i--) {
-    bursts[i].update();
-    bursts[i].display();
-    if (bursts[i].isDead()) {
-      bursts.splice(i, 1);
+    for (let circle of circles) {
+        circle.update();
+        circle.display();
     }
-  }
-  // --- 新增結束 ---
+
+    for (let i = bursts.length - 1; i >= 0; i--) {
+        bursts[i].update();
+        bursts[i].display();
+        if (bursts[i].isDead()) {
+            bursts.splice(i, 1);
+        }
+    }
+    
+    // 顯示文字和分數
+    fill('#9a8c98'); // 設定文字顏色為 9a8c98
+    textSize(32); // 設定文字大小為 32PX
+
+    // 1. 左上角上方文字
+    textAlign(LEFT, TOP);
+    text("414730183", 20, 20); // 距離左邊和頂部 20px
+
+    // 2. 右上角得分
+    textAlign(RIGHT, TOP);
+    text("得分: " + score, width - 20, 20); // 距離右邊和頂部 20px
 }
 
-// 當視窗大小改變時，重新調整畫布大小
+// 滑鼠點擊事件處理
+function mousePressed() {
+    // 1. 氣球爆破檢查
+    let clickedBalloon = false;
+    for (let i = circles.length - 1; i >= 0; i--) {
+        if (circles[i].checkClick()) {
+            clickedBalloon = true;
+            break;
+        }
+    }
+    
+  // 2. 解決瀏覽器音效限制：首次點擊時嘗試解鎖音頻上下文
+  if (popSound && typeof popSound.isLoaded === 'function' && !popSound.isLoaded()) {
+    try { userStartAudio(); } catch(e){}
+  }
+
+    // 3. 【新增】隱藏按鈕的再顯示邏輯
+    // 只有在音效啟用中且按鈕被隱藏時才檢查
+    if (soundEnabled && soundButton && !soundButton.elt.offsetParent) {
+        
+        let centerX = width / 2;
+        let centerY = height / 2;
+        let tolerance = CENTER_TOLERANCE;
+        
+        // 檢查點擊是否在中心區域
+        if (mouseX > centerX - tolerance && 
+            mouseX < centerX + tolerance && 
+            mouseY > centerY - tolerance && 
+            mouseY < centerY + tolerance) {
+            
+            centerClickCount++;
+            
+            if (centerClickCount >= 5) {
+                // 連續點擊 5 次，重新顯示按鈕
+                soundButton.show();
+                soundButton.html('音效已啟用 (點擊關閉)');
+                centerClickCount = 0; // 重設計數器
+            }
+        } else {
+            // 點擊不在中心區域，重設連續計數器
+            centerClickCount = 0;
+        }
+    }
+}
+
+// 【新增】音效開關函數
+function toggleSound() {
+    soundEnabled = !soundEnabled; // 切換狀態
+    
+    if (soundEnabled) {
+        // 音效啟用，隱藏按鈕
+        soundButton.html('音效已啟用');
+        soundButton.hide(); 
+        centerClickCount = 0; 
+    } else {
+        // 音效禁用，顯示按鈕並更新文字 (此情況只會在按鈕重新顯示後發生)
+        soundButton.html('音效已禁用 (點此啟用)');
+    }
+    
+    try { userStartAudio(); } catch(e){}
+}
+
+// 當視窗大小改變時，重新調整畫布大小並移動按鈕
 function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
-  background('#ffcad4'); // 重新設定背景
+    resizeCanvas(windowWidth, windowHeight);
+    background('#ffcad4');
+    // 將按鈕重新置於中央
+    if (soundButton) soundButton.center(); 
 }
 
 // 定義一個 Circle 類別來管理每個圓形的屬性
@@ -75,16 +178,7 @@ class Circle {
   update() {
     this.y -= this.speed; // 向上移動
 
-    // --- 新增：隨機爆破觸發 ---
-    if (random() < POP_CHANCE) {
-      this.explode();
-      // 立刻重設到畫布底部重新生成氣球
-      this.reset();
-      this.x = random(width);
-      this.y = height + this.diameter / 2;
-      return;
-    }
-    // --- 新增結束 ---
+    // 【已移除】隨機爆破觸發邏輯
 
     // 如果圓形完全漂浮到畫布頂部上方，就將其重設到畫布底部
     if (this.y < -this.diameter / 2) {
@@ -95,9 +189,40 @@ class Circle {
       this.y = height + this.diameter / 2;
     }
   }
+    
+  // 【新增】檢查滑鼠點擊是否在氣球內，並處理得分與爆破
+  checkClick() {
+    // 計算滑鼠與圓心之間的距離
+    let distance = dist(this.x, this.y, mouseX, mouseY);
+
+    // 如果距離小於半徑，表示點擊在氣球內
+    if (distance < this.diameter / 2) {
+      
+      // 處理得分邏輯
+      if (this.color === '#f4acb7') {
+        score += 1; // 顏色 f4acb7：加一分
+      } else {
+        score -= 1; // 其他顏色：扣一分
+      }
+
+      // 執行爆破效果
+      this.explode();
+
+      // 重設氣球到畫布底部
+      this.reset();
+      this.x = random(width);
+      this.y = height + this.diameter / 2;
+
+      return true; // 返回 true 表示點擊成功，讓 mousePressed 停止迭代
+    }
+    return false;
+  }
 
   // 爆裂：生成多個爆破粒子
   explode() {
+  // !!若您已載入音效並開啟音效，則播放音效!!
+  if (soundEnabled && popSound) { try { popSound.play(); } catch (e) {} }
+
     // 粒子數量與圓大小相關
     let count = floor(random(12, 28));
     for (let i = 0; i < count; i++) {
@@ -122,26 +247,22 @@ class Circle {
     // 繪製圓形
     ellipse(this.x, this.y, this.diameter, this.diameter);
 
-    // --- 新增：在圓右上方繪製白色透明方形 ---
+    // 在圓右上方繪製白色透明方形 (保持不變)
     let squareSize = this.diameter / 7;
-    // 讓方形中心點在圓右上1/4半徑處，確保方形完全在圓內
     let offset = (this.diameter / 2) - (squareSize / 2);
-    // 再往圓心方向縮小 1/4 方形邊長，確保不會超出圓邊
     let safeOffset = offset - squareSize / 4;
     let squareX = this.x + safeOffset * cos(PI / 4);
     let squareY = this.y - safeOffset * sin(PI / 4);
 
-    // 設定白色且透明
-    let squareColor = color(255, 255, 255, 120); // 120為透明度，可自行調整
+    let squareColor = color(255, 255, 255, 120); // 120為透明度
     fill(squareColor);
     noStroke();
     rectMode(CENTER);
     rect(squareX, squareY, squareSize, squareSize);
-    // --- 新增結束 ---
   }
 }
 
-// --- 新增：爆破粒子類別 ---
+// 爆破粒子類別 (保持不變)
 class BurstParticle {
   constructor(x, y, vx, vy, col, baseAlpha) {
     this.x = x;
@@ -157,7 +278,7 @@ class BurstParticle {
   update() {
     this.x += this.vx;
     this.y += this.vy;
-    // 微小重力與摩擦，讓碎片稍微下墜並漸停
+    // 微小重力與摩擦
     this.vy += 0.06;
     this.vx *= 0.99;
     this.vy *= 0.995;
